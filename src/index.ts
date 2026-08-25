@@ -1,5 +1,15 @@
-import type PocketBase from 'pocketbase-sveltekit';
 import { type CollectionField } from 'pocketbase-sveltekit';
+
+/**
+ * The minimum a client must provide to read a schema.
+ *
+ * Structural rather than a concrete PocketBase class so callers can pass a
+ * client from `pocketbase` or `pocketbase-sveltekit` — the SvelteKit build
+ * differs only in its auth store, which is irrelevant here.
+ */
+export type SchemaSource = {
+	collections: { getFullList: (...args: any[]) => Promise<any[]> };
+};
 import { Project, StructureKind } from 'ts-morph';
 import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
@@ -332,7 +342,7 @@ export function collectionToJsonSchema(collection: Collection): JsonSchema {
  * free of process-spawning dependencies — the caller (`vela`) already owns a
  * `withPocketbase` helper for the throwaway-server case.
  */
-export const getCollections = async (pb: PocketBase): Promise<Collection[]> => {
+export const getCollections = async (pb: SchemaSource): Promise<Collection[]> => {
 	const fullList = await pb.collections.getFullList();
 
 	return fullList.map((collection: any) => ({
@@ -352,7 +362,7 @@ export const getCollections = async (pb: PocketBase): Promise<Collection[]> => {
  * watcher (or a TypeScript server) never observes a half-written file.
  */
 export const processTypes = async (
-	pb: PocketBase,
+	pb: SchemaSource,
 	typesDir: string,
 	options: EmitOptions = {}
 ): Promise<string> => {

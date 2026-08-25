@@ -1,0 +1,66 @@
+{
+	"name": "@velastack/pocketbase-codegen",
+	"version": "0.1.0",
+	"description": "Generate TypeScript types and JSON Schema from a live PocketBase schema. Dev-time only.",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/velastack/pocketbase-codegen.git"
+	},
+	"homepage": "https://github.com/velastack/pocketbase-codegen#readme",
+	"bugs": {
+		"url": "https://github.com/velastack/pocketbase-codegen/issues"
+	},
+	"type": "module",
+	"engines": {
+		"node": ">=20"
+	},
+	"scripts": {
+		"build": "rm -rf dist && tsc -p tsconfig.build.json",
+		"check": "tsc --noEmit",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"format": "prettier --write .",
+		"lint": "prettier --check .",
+		"prepack": "npm run build && publint"
+	},
+	"files": [
+		"dist",
+		"!dist/**/*.test.*",
+		"!dist/**/*.spec.*"
+	],
+	"sideEffects": false,
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		}
+	},
+	"dependencies": {
+		"ts-morph": "^28.0.0"
+	},
+	"peerDependencies": {
+		"pocketbase-sveltekit": "^0.28.0",
+		"zod": "^4.0.0"
+	},
+	"peerDependenciesMeta": {
+		"zod": {
+			"optional": true
+		}
+	},
+	"devDependencies": {
+		"@types/node": "^22.20.1",
+		"pocketbase-sveltekit": "^0.28.0",
+		"prettier": "^3.4.2",
+		"publint": "^0.3.2",
+		"typescript": "^5.9.3",
+		"vitest": "^4.1.5"
+	},
+	"keywords": [
+		"pocketbase",
+		"codegen",
+		"typescript",
+		"velastack"
+	]
+}

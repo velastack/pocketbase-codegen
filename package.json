@@ -54,7 +54,7 @@
 		"pocketbase-sveltekit": "^0.28.0",
 		"prettier": "^3.4.2",
 		"publint": "^0.3.2",
-		"typescript": "^5.9.3",
+		"typescript": "^7.0.2",
 		"vitest": "^4.1.5"
 	},
 	"keywords": [

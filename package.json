@@ -1,6 +1,6 @@
 {
 	"name": "@velastack/pocketbase-codegen",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "Generate TypeScript types and JSON Schema from a live PocketBase schema. Dev-time only.",
 	"license": "MIT",
 	"repository": {

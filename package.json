@@ -41,7 +41,7 @@
 		"ts-morph": "^28.0.0"
 	},
 	"peerDependencies": {
-		"pocketbase-sveltekit": "^0.28.0",
+		"pocketbase-sveltekit": "^0.28.0 || ^0.29.0",
 		"zod": "^4.0.0"
 	},
 	"peerDependenciesMeta": {
@@ -51,7 +51,7 @@
 	},
 	"devDependencies": {
 		"@types/node": "^26.5.0",
-		"pocketbase-sveltekit": "^0.28.0",
+		"pocketbase-sveltekit": "^0.29.0",
 		"prettier": "^3.4.2",
 		"publint": "^0.3.2",
 		"typescript": "^7.0.2",

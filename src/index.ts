@@ -298,10 +298,38 @@ export type JsonSchema = {
 	additionalProperties: false;
 };
 
+/**
+ * Whether a field's `pattern` can go into a JSON Schema as it is. PocketBase
+ * patterns are Go regular expressions and JSON Schema's are ECMAScript ones.
+ * Most are valid as both, but one that is not (`(?i)abc`, `(?P<year>\d+)`)
+ * means something else to whatever reads the schema, so it is left out.
+ *
+ * Compiled without the `u` flag on purpose: with it JavaScript rejects
+ * escapes Go allows and people write, such as `\-` in `^\d{3}\-\d{4}$`.
+ */
+function isPortablePattern(pattern: unknown): pattern is string {
+	if (typeof pattern !== 'string' || pattern === '') return false;
+	try {
+		new RegExp(pattern);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 function fieldToJsonSchema(field: Field): unknown | null {
 	const multi = field.maxSelect !== undefined && field.maxSelect > 1;
 	switch (field.type) {
-		case 'text':
+		case 'text': {
+			// PocketBase stores "no limit" as 0 and "no pattern" as ''. (`max: 0`
+			// really means its default cap of 5000 characters, which is not worth
+			// spelling out for every text field.)
+			const schema: Record<string, unknown> = { type: 'string' };
+			if (typeof field.min === 'number' && field.min > 0) schema.minLength = field.min;
+			if (typeof field.max === 'number' && field.max > 0) schema.maxLength = field.max;
+			if (isPortablePattern(field.pattern)) schema.pattern = field.pattern;
+			return schema;
+		}
 		case 'editor':
 		case 'password':
 			return { type: 'string' };
@@ -312,8 +340,16 @@ function fieldToJsonSchema(field: Field): unknown | null {
 		case 'date':
 		case 'autodate':
 			return { type: 'string', format: 'date-time' };
-		case 'number':
-			return { type: 'number' };
+		case 'number': {
+			// Unlike a text field's, a number's bounds are null when unset, so 0 is
+			// a real bound.
+			const schema: Record<string, unknown> = {
+				type: field.onlyInt === true ? 'integer' : 'number'
+			};
+			if (typeof field.min === 'number') schema.minimum = field.min;
+			if (typeof field.max === 'number') schema.maximum = field.max;
+			return schema;
+		}
 		case 'bool':
 			return { type: 'boolean' };
 		case 'select': {

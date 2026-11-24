@@ -59,6 +59,14 @@ hidden field or auth `email` was typed as always present.
 | `collectionToJsonSchema(collection)`        | Pure: one collection → a mutable JSON Schema               |
 | `DEFAULT_MODULE_NAME`                       | `'@velastack/pocketbase'`                                  |
 
+`collectionToJsonSchema` carries a field's own limits into the schema: a number
+field's `onlyInt` becomes `type: 'integer'` and its `min` / `max` become
+`minimum` / `maximum`; a text field's `min` / `max` / `pattern` become
+`minLength` / `maxLength` / `pattern`. A keyword is only emitted for an option
+that is set (a text field's `max: 0` is PocketBase's default limit, not a
+limit of zero), and a pattern that is not also a valid JavaScript regular
+expression is left out.
+
 `options.moduleName` controls which module the generated file augments and
 imports its collection-model types from. It defaults to
 `@velastack/pocketbase`; another bindings package can pass its own name.

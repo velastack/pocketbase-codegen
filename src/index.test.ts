@@ -501,6 +501,90 @@ describe('collectionToJsonSchema', () => {
 		});
 	});
 
+	it("carries a number field's onlyInt, min and max through", () => {
+		const c: Collection = {
+			id: 'col',
+			name: 'songs',
+			type: 'base',
+			fields: [
+				field({ name: 'year', type: 'number', onlyInt: true, min: 1950, max: 2030 }),
+				field({ name: 'slot', type: 'number', onlyInt: true, min: null, max: null }),
+				field({ name: 'score', type: 'number', onlyInt: false, min: 0, max: null }),
+				field({ name: 'offset', type: 'number', onlyInt: false, min: null, max: 0 }),
+				// what PocketBase stores for a number field nobody constrained
+				field({ name: 'plain', type: 'number', onlyInt: false, min: null, max: null })
+			]
+		};
+		expect(collectionToJsonSchema(c).properties).toEqual({
+			year: { type: 'integer', minimum: 1950, maximum: 2030 },
+			slot: { type: 'integer' },
+			// a number's bounds are null when unset, so 0 is a real bound
+			score: { type: 'number', minimum: 0 },
+			offset: { type: 'number', maximum: 0 },
+			plain: { type: 'number' }
+		});
+	});
+
+	it("carries a text field's min, max and pattern through", () => {
+		const c: Collection = {
+			id: 'col',
+			name: 'brackets',
+			type: 'base',
+			fields: [
+				field({ name: 'code', type: 'text', min: 4, max: 4, pattern: '^[A-Z]{4}$' }),
+				field({ name: 'spotifyId', type: 'text', min: 0, max: 22, pattern: '' }),
+				field({ name: 'slug', type: 'text', min: 3, max: 0, pattern: '' }),
+				// what PocketBase stores for a text field nobody constrained:
+				// 0 is "no minimum" and "the default maximum", '' is "no pattern"
+				field({ name: 'plain', type: 'text', min: 0, max: 0, pattern: '' })
+			]
+		};
+		expect(collectionToJsonSchema(c).properties).toEqual({
+			code: { type: 'string', minLength: 4, maxLength: 4, pattern: '^[A-Z]{4}$' },
+			spotifyId: { type: 'string', maxLength: 22 },
+			slug: { type: 'string', minLength: 3 },
+			plain: { type: 'string' }
+		});
+	});
+
+	it('leaves out a pattern that is valid in Go but not in JavaScript', () => {
+		const c: Collection = {
+			id: 'col',
+			name: 'thing',
+			type: 'base',
+			fields: [
+				field({ name: 'code', type: 'text', min: 0, max: 8, pattern: '(?i)^[a-z]+$' }),
+				field({ name: 'named', type: 'text', min: 0, max: 0, pattern: '^(?P<year>\\d{4})$' }),
+				// an escape JavaScript only rejects in unicode mode is fine
+				field({ name: 'phone', type: 'text', min: 0, max: 0, pattern: '^\\d{3}\\-\\d{4}$' })
+			]
+		};
+		expect(collectionToJsonSchema(c).properties).toEqual({
+			code: { type: 'string', maxLength: 8 },
+			named: { type: 'string' },
+			phone: { type: 'string', pattern: '^\\d{3}\\-\\d{4}$' }
+		});
+	});
+
+	it('does not read min and max on field types where they mean something else', () => {
+		const c: Collection = {
+			id: 'col',
+			name: 'thing',
+			type: 'base',
+			fields: [
+				// a date's bounds are datetime strings, a password's are lengths
+				field({ name: 'due', type: 'date', min: '2026-01-01 00:00:00.000Z', max: '' }),
+				field({ name: 'password', type: 'password', min: 8, max: 71, pattern: '' }),
+				field({ name: 'body', type: 'editor', maxSize: 100 })
+			]
+		};
+		expect(collectionToJsonSchema(c).properties).toEqual({
+			due: { type: 'string', format: 'date-time' },
+			password: { type: 'string' },
+			body: { type: 'string' }
+		});
+	});
+
 	it('attaches format hints for email/url/date', () => {
 		const c: Collection = {
 			id: 'col',

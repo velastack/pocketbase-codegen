@@ -31,6 +31,12 @@ const leads: Collection = {
 // Strip whitespace so structural matching isn't tripped by ts-morph's formatter.
 const compact = (s: string) => s.replace(/\s+/g, ' ');
 
+/** The `Models` type alone, compacted. */
+const modelsBlock = (source: string) => {
+	const out = compact(source);
+	return out.slice(out.indexOf('export type Models'), out.indexOf('export type Collections'));
+};
+
 describe('collectionsToTypes', () => {
 	describe('Models', () => {
 		it('emits an entry per non-system collection with collectionId/collectionName literals', () => {
@@ -41,14 +47,123 @@ describe('collectionsToTypes', () => {
 			expect(out).toContain('collectionName: "leads"');
 		});
 
-		it('marks required fields without ? and optional fields with ?', () => {
-			const out = compact(collectionsToTypes([leads]));
-			// Models block — find the leads entry's required/optional rendering.
-			const models = out.slice(out.indexOf('Models'));
-			expect(models).toMatch(/name:\s*string/);
-			expect(models).not.toMatch(/name\?:\s*string/);
-			expect(models).toMatch(/phone\?:\s*string/);
-			expect(models).toMatch(/message\?:\s*string/);
+		// PocketBase fills in every field of a record it returns: an unset one
+		// arrives as '' / 0 / false / [], never as a missing key. `required` only
+		// constrains what may be written, which is `Schemas`' business.
+		it('types a field as always present whether or not it is required', () => {
+			const block = modelsBlock(collectionsToTypes([leads]));
+			expect(block).toMatch(/name:\s*string/);
+			expect(block).toMatch(/phone:\s*string/);
+			expect(block).toMatch(/message:\s*string/);
+			expect(block).not.toContain('?:');
+		});
+
+		it('types every non-required field type as its zero value, not undefined', () => {
+			const c: Collection = {
+				id: 'col_z',
+				name: 'zeroes',
+				type: 'base',
+				fields: [
+					field({ name: 'title', type: 'text' }),
+					field({ name: 'count', type: 'number' }),
+					field({ name: 'active', type: 'bool' }),
+					field({ name: 'due', type: 'date' }),
+					field({ name: 'site', type: 'url' }),
+					field({ name: 'contact', type: 'email' }),
+					field({ name: 'body', type: 'editor' }),
+					field({ name: 'meta', type: 'json' }),
+					field({ name: 'point', type: 'geoPoint' }),
+					field({ name: 'cover', type: 'file', maxSelect: 1 }),
+					field({ name: 'gallery', type: 'file', maxSelect: 5 }),
+					field({ name: 'tags', type: 'select', values: ['a', 'b'], maxSelect: 2 })
+				]
+			};
+			const block = modelsBlock(collectionsToTypes([c]));
+			expect(block).not.toContain('?:');
+			expect(block).toContain('title: string;');
+			expect(block).toContain('count: number;');
+			expect(block).toContain('active: boolean;');
+			// '' when unset
+			expect(block).toContain('due: string;');
+			expect(block).toContain('site: string;');
+			// `email` is only special on an auth collection
+			expect(block).toContain('contact: string;');
+			expect(block).toContain('body: string;');
+			// null when unset, which `any` covers
+			expect(block).toContain('meta: any;');
+			expect(block).toContain('point: { lat: number; lon: number };');
+			expect(block).toContain('cover: string;');
+			expect(block).toContain('gallery: string[];');
+			// [] when unset
+			expect(block).toContain('tags: Array<"a" | "b">');
+		});
+
+		it('adds "" to a non-required single select, which is what an unset one returns', () => {
+			const c: Collection = {
+				id: 'col_s',
+				name: 'sel',
+				type: 'base',
+				fields: [
+					field({ name: 'mood', type: 'select', values: ['happy', 'sad'], maxSelect: 1 }),
+					field({
+						name: 'kind',
+						type: 'select',
+						required: true,
+						values: ['x', 'y'],
+						maxSelect: 1
+					}),
+					field({ name: 'tags', type: 'select', values: ['a', 'b'], maxSelect: 2 })
+				]
+			};
+			const out = compact(collectionsToTypes([c]));
+			const block = modelsBlock(out);
+			expect(block).toContain('mood: "happy" | "sad" | "";');
+			expect(block).toContain('kind: "x" | "y";');
+			expect(block).toContain('tags: Array<"a" | "b">');
+			// writing is unchanged: leave the key out, or send one of the values
+			expect(out.slice(out.indexOf('Schemas'))).toContain('mood?: "happy" | "sad";');
+		});
+
+		it('keeps hidden fields optional: only superusers are sent them', () => {
+			const users: Collection = {
+				id: 'col_users',
+				name: 'users',
+				type: 'auth',
+				fields: [
+					field({ name: 'id', type: 'text', required: true, system: true }),
+					field({ name: 'password', type: 'password', required: true, hidden: true }),
+					field({ name: 'tokenKey', type: 'text', required: true, hidden: true }),
+					field({ name: 'internalNote', type: 'text', hidden: true }),
+					field({ name: 'name', type: 'text' })
+				]
+			};
+			const block = modelsBlock(collectionsToTypes([users]));
+			expect(block).toContain('password?: string;');
+			expect(block).toContain('tokenKey?: string;');
+			expect(block).toContain('internalNote?: string;');
+			expect(block).toContain('name: string');
+		});
+
+		it('keeps email on an auth collection optional, required or not', () => {
+			// Withheld from other users unless the record's emailVisibility is on.
+			// PocketBase's own users collection has it `required: true`.
+			for (const required of [true, false]) {
+				const users: Collection = {
+					id: 'u',
+					name: 'users',
+					type: 'auth',
+					fields: [
+						field({ name: 'id', type: 'text', required: true, system: true }),
+						field({ name: 'email', type: 'email', required, system: true }),
+						field({ name: 'emailVisibility', type: 'bool', system: true }),
+						field({ name: 'verified', type: 'bool', system: true })
+					]
+				};
+				const block = modelsBlock(collectionsToTypes([users]));
+				expect(block).toContain('email?: string;');
+				expect(block).toContain('emailVisibility: boolean;');
+				expect(block).toContain('verified: boolean');
+			}
 		});
 
 		it('skips collections whose names start with underscore', () => {
@@ -165,12 +280,44 @@ describe('collectionsToTypes', () => {
 			const out = compact(collectionsToTypes([users, posts]));
 			const modelsBlock = out.slice(out.indexOf('Models'), out.indexOf('Schemas'));
 			expect(modelsBlock).toMatch(/author:\s*string/);
-			expect(modelsBlock).toMatch(/editors\?:\s*string\[\]/);
+			// not required, and still always present: [] when unset
+			expect(modelsBlock).toMatch(/editors:\s*string\[\]/);
+			expect(modelsBlock).not.toMatch(/editors\?:/);
 			expect(modelsBlock).toContain('expand?:');
 			// editors has maxSelect > 1, so it should be array in expand
-			expect(modelsBlock).toMatch(/editors:\s*\{[^}]*email:\s*string[^}]*\}\[\]/);
+			expect(modelsBlock).toMatch(/editors:\s*\{[^}]*email\?:\s*string[^}]*\}\[\]/);
 			// author has maxSelect === 1, so it should be a single object
-			expect(modelsBlock).toMatch(/author:\s*\{[^}]*email:\s*string[^}]*\}(?!\[\])/);
+			expect(modelsBlock).toMatch(/author:\s*\{[^}]*email\?:\s*string[^}]*\}(?!\[\])/);
+		});
+
+		it('types an expanded record by the same rules as a record read directly', () => {
+			const users: Collection = {
+				id: 'col_users',
+				name: 'users',
+				type: 'auth',
+				fields: [
+					field({ name: 'id', type: 'text', required: true, system: true }),
+					field({ name: 'tokenKey', type: 'text', required: true, hidden: true }),
+					field({ name: 'email', type: 'email' }),
+					field({ name: 'role', type: 'select', values: ['admin', 'member'], maxSelect: 1 }),
+					field({ name: 'display-name', type: 'text' })
+				]
+			};
+			const posts: Collection = {
+				id: 'col_posts',
+				name: 'posts',
+				type: 'base',
+				fields: [
+					field({ name: 'id', type: 'text', required: true, system: true }),
+					field({ name: 'author', type: 'relation', maxSelect: 1, collectionId: 'col_users' })
+				]
+			};
+			const block = modelsBlock(collectionsToTypes([users, posts]));
+			const expand = block.slice(block.indexOf('expand?:'));
+			expect(expand).toContain('tokenKey?: string;');
+			expect(expand).toContain('email?: string;');
+			expect(expand).toContain('role: "admin" | "member" | "";');
+			expect(expand).toContain("'display-name': string");
 		});
 
 		it('throws when a relation references an unknown collection id', () => {

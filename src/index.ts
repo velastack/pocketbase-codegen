@@ -124,17 +124,40 @@ const escapeFieldName = (fieldName: string): string => {
 	return fieldName;
 };
 
+/**
+ * One field of a record as PocketBase returns it, for `Models`.
+ *
+ * `required` is a rule about what may be written. On the way out PocketBase
+ * fills in every field: an unset one arrives as its zero value (`''`, `0`,
+ * `false`, `[]`, `null` for json), not as a missing key. So a field is only
+ * optional here when the response can leave it out altogether:
+ *
+ * - a `hidden` field (`password`, `tokenKey`) is only sent to superusers;
+ * - `email` on an auth collection is withheld from other users unless the
+ *   record's `emailVisibility` is on, whether or not the field is required.
+ */
+function modelField(field: Field, collection: Collection): string {
+	const omittable = field.hidden || (collection.type === 'auth' && field.name === 'email');
+
+	let type = fieldToTsType(field.type, field.values, field.maxSelect, false);
+
+	// An unset single select is the empty string, which is none of its values.
+	// (A multiple select is `[]`, and the other single-value types that come
+	// back as `''` are already `string`.)
+	const single = !(field.maxSelect && field.maxSelect > 1);
+	if (field.type === 'select' && single && !field.required) {
+		type = type ? `${type} | ""` : '""';
+	}
+
+	return `${escapeFieldName(field.name)}${omittable ? '?' : ''}: ${type}`;
+}
+
 export function collectionsToTypes(collections: Collection[], options: EmitOptions = {}) {
 	const moduleName = options.moduleName ?? DEFAULT_MODULE_NAME;
 	const tablesTypeBody = collections
 		.filter((collection) => !collection.name.startsWith('_'))
 		.map((c) => {
-			const fields = c.fields
-				.map(
-					(f) =>
-						`${escapeFieldName(f.name)}${f.required ? '' : '?'}: ${fieldToTsType(f.type, f.values, f.maxSelect, false)}`
-				)
-				.join(';\n');
+			const fields = c.fields.map((f) => modelField(f, c)).join(';\n');
 
 			if (c.fields.some((f) => f.type === 'relation')) {
 				const expandableFields = c.fields
@@ -147,10 +170,10 @@ export function collectionsToTypes(collections: Collection[], options: EmitOptio
 						}
 
 						const relationFields = relationCollection.fields
-							.map((f) => `${f.name}: ${fieldToTsType(f.type, f.values, f.maxSelect, false)}`)
+							.map((f) => modelField(f, relationCollection))
 							.join(';\n');
 
-						return `${f.name}: { ${relationFields} }${f.maxSelect !== 1 ? '[]' : ''};`;
+						return `${escapeFieldName(f.name)}: { ${relationFields} }${f.maxSelect !== 1 ? '[]' : ''};`;
 					})
 					.join('\n');
 

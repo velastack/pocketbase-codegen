@@ -32,7 +32,7 @@ treat a non-required field differently:
 
 ```ts
 // a `songs` collection: title (required), artist, year, genre (single select)
-Models['songs']; //  { id: string; title: string; artist: string; year: number; genre: 'rock' | 'pop' | ''; ... }
+Models['songs']; //  { id: string; title: string; artist: string; year: number; genre: 'rock' | 'pop'; ... }
 Schemas['songs']; // z.ZodType<{ id?: string; title: string; artist?: string; year?: number; genre?: 'rock' | 'pop'; ... }>
 ```
 
@@ -47,9 +47,15 @@ user's own record always has it, but another user's record arrives without it
 unless that record's `emailVisibility` is on. Entries under `expand` follow
 the same rules.
 
+One thing the types do not say: an unset single select arrives as `''`, which
+is not in its union. The union is kept as the field's values so that a record
+still fits the collection's input schema (`superValidate(record, zod4(schema))`
+on an edit page); compare against `''` yourself where an unset select matters.
+
 Before 0.2.0 every non-required field in `Models` was optional
-(`artist?: string`), a single select had no `''` in its union, and a required
-hidden field was typed as always present.
+(`artist?: string`) and a required hidden field was typed as always present.
+0.2.0 itself added `''` to a non-required single select's union; 0.2.1 took it
+out again.
 
 ### API
 

@@ -98,7 +98,7 @@ describe('collectionsToTypes', () => {
 			expect(block).toContain('tags: Array<"a" | "b">');
 		});
 
-		it('adds "" to a non-required single select, which is what an unset one returns', () => {
+		it('keeps a non-required single select as the union of its values', () => {
 			const c: Collection = {
 				id: 'col_s',
 				name: 'sel',
@@ -117,7 +117,8 @@ describe('collectionsToTypes', () => {
 			};
 			const out = compact(collectionsToTypes([c]));
 			const block = modelsBlock(out);
-			expect(block).toContain('mood: "happy" | "sad" | "";');
+			// present, and assignable to the input schema as it is
+			expect(block).toContain('mood: "happy" | "sad";');
 			expect(block).toContain('kind: "x" | "y";');
 			expect(block).toContain('tags: Array<"a" | "b">');
 			// writing is unchanged: leave the key out, or send one of the values
@@ -317,7 +318,7 @@ describe('collectionsToTypes', () => {
 			const expand = block.slice(block.indexOf('expand?:'));
 			expect(expand).toContain('tokenKey?: string;');
 			expect(expand).toContain('email?: string;');
-			expect(expand).toContain('role: "admin" | "member" | "";');
+			expect(expand).toContain('role: "admin" | "member";');
 			expect(expand).toContain("'display-name': string");
 		});
 

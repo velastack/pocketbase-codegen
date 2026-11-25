@@ -143,15 +143,12 @@ function modelField(field: Field, collection: Collection): string {
 	const omittable =
 		field.hidden || (collection.type === 'auth' && field.name === 'email' && !field.required);
 
-	let type = fieldToTsType(field.type, field.values, field.maxSelect, false);
-
-	// An unset single select is the empty string, which is none of its values.
-	// (A multiple select is `[]`, and the other single-value types that come
-	// back as `''` are already `string`.)
-	const single = !(field.maxSelect && field.maxSelect > 1);
-	if (field.type === 'select' && single && !field.required) {
-		type = type ? `${type} | ""` : '""';
-	}
+	// A non-required single select keeps the union of its values, although an
+	// unset one arrives as `''`. With `''` in the type a record no longer fits
+	// the collection's own input schema, which is how generated edit pages hand
+	// it to a form (`superValidate(record, zod4(schema))`), and every project
+	// with an optional select would stop type-checking.
+	const type = fieldToTsType(field.type, field.values, field.maxSelect, false);
 
 	return `${escapeFieldName(field.name)}${omittable ? '?' : ''}: ${type}`;
 }

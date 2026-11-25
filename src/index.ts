@@ -134,10 +134,14 @@ const escapeFieldName = (fieldName: string): string => {
  *
  * - a `hidden` field (`password`, `tokenKey`) is only sent to superusers;
  * - `email` on an auth collection is withheld from other users unless the
- *   record's `emailVisibility` is on, whether or not the field is required.
+ *   record's `emailVisibility` is on. It stays optional when the field is not
+ *   required. A required one (PocketBase's default) is typed as present, as
+ *   it always was: the signed-in user's own record has it, and that is the
+ *   record most code reads. Another user's record can still arrive without it.
  */
 function modelField(field: Field, collection: Collection): string {
-	const omittable = field.hidden || (collection.type === 'auth' && field.name === 'email');
+	const omittable =
+		field.hidden || (collection.type === 'auth' && field.name === 'email' && !field.required);
 
 	let type = fieldToTsType(field.type, field.values, field.maxSelect, false);
 

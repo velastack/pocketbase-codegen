@@ -41,13 +41,15 @@ zero value (`''`, `0`, `false`, `[]`, `null` for json; `''` too for an unset
 date, file, single relation or single select), so `Models` fields are not
 optional and need no `?? ''`. The exceptions are fields the response can leave
 out: `hidden` fields such as `password` and `tokenKey`, which only superusers
-are sent, and `email` on an auth collection, which other users only see when
-the record's `emailVisibility` is on. Entries under `expand`
-follow the same rules.
+are sent, and a non-required `email` on an auth collection. A required auth
+`email` (PocketBase's default) is typed as present because the signed-in
+user's own record always has it, but another user's record arrives without it
+unless that record's `emailVisibility` is on. Entries under `expand` follow
+the same rules.
 
 Before 0.2.0 every non-required field in `Models` was optional
 (`artist?: string`), a single select had no `''` in its union, and a required
-hidden field or auth `email` was typed as always present.
+hidden field was typed as always present.
 
 ### API
 

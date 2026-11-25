@@ -144,9 +144,10 @@ describe('collectionsToTypes', () => {
 			expect(block).toContain('name: string');
 		});
 
-		it('keeps email on an auth collection optional, required or not', () => {
+		it('keeps a non-required email on an auth collection optional', () => {
 			// Withheld from other users unless the record's emailVisibility is on.
-			// PocketBase's own users collection has it `required: true`.
+			// PocketBase's own users collection has it `required: true`, which
+			// stays typed as present, as it was before.
 			for (const required of [true, false]) {
 				const users: Collection = {
 					id: 'u',
@@ -160,7 +161,7 @@ describe('collectionsToTypes', () => {
 					]
 				};
 				const block = modelsBlock(collectionsToTypes([users]));
-				expect(block).toContain('email?: string;');
+				expect(block).toContain(required ? 'email: string;' : 'email?: string;');
 				expect(block).toContain('emailVisibility: boolean;');
 				expect(block).toContain('verified: boolean');
 			}
@@ -285,9 +286,9 @@ describe('collectionsToTypes', () => {
 			expect(modelsBlock).not.toMatch(/editors\?:/);
 			expect(modelsBlock).toContain('expand?:');
 			// editors has maxSelect > 1, so it should be array in expand
-			expect(modelsBlock).toMatch(/editors:\s*\{[^}]*email\?:\s*string[^}]*\}\[\]/);
+			expect(modelsBlock).toMatch(/editors:\s*\{[^}]*email:\s*string[^}]*\}\[\]/);
 			// author has maxSelect === 1, so it should be a single object
-			expect(modelsBlock).toMatch(/author:\s*\{[^}]*email\?:\s*string[^}]*\}(?!\[\])/);
+			expect(modelsBlock).toMatch(/author:\s*\{[^}]*email:\s*string[^}]*\}(?!\[\])/);
 		});
 
 		it('types an expanded record by the same rules as a record read directly', () => {

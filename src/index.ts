@@ -124,17 +124,44 @@ const escapeFieldName = (fieldName: string): string => {
 	return fieldName;
 };
 
+/**
+ * One field of a record as PocketBase returns it, for `Models`.
+ *
+ * `required` is a rule about what may be written. On the way out PocketBase
+ * fills in every field: an unset one arrives as its zero value (`''`, `0`,
+ * `false`, `[]`, `null` for json), not as a missing key. So a field is only
+ * optional here when the response can leave it out altogether:
+ *
+ * - a `hidden` field (`password`, `tokenKey`) is only sent to superusers;
+ * - `email` on an auth collection is withheld from other users unless the
+ *   record's `emailVisibility` is on. It stays optional when the field is not
+ *   required. A required one (PocketBase's default) is typed as present, as
+ *   it always was: the signed-in user's own record has it, and that is the
+ *   record most code reads. Another user's record can still arrive without it.
+ */
+function modelField(field: Field, collection: Collection): string {
+	const omittable =
+		field.hidden || (collection.type === 'auth' && field.name === 'email' && !field.required);
+
+	let type = fieldToTsType(field.type, field.values, field.maxSelect, false);
+
+	// An unset single select is the empty string, which is none of its values.
+	// (A multiple select is `[]`, and the other single-value types that come
+	// back as `''` are already `string`.)
+	const single = !(field.maxSelect && field.maxSelect > 1);
+	if (field.type === 'select' && single && !field.required) {
+		type = type ? `${type} | ""` : '""';
+	}
+
+	return `${escapeFieldName(field.name)}${omittable ? '?' : ''}: ${type}`;
+}
+
 export function collectionsToTypes(collections: Collection[], options: EmitOptions = {}) {
 	const moduleName = options.moduleName ?? DEFAULT_MODULE_NAME;
 	const tablesTypeBody = collections
 		.filter((collection) => !collection.name.startsWith('_'))
 		.map((c) => {
-			const fields = c.fields
-				.map(
-					(f) =>
-						`${escapeFieldName(f.name)}${f.required ? '' : '?'}: ${fieldToTsType(f.type, f.values, f.maxSelect, false)}`
-				)
-				.join(';\n');
+			const fields = c.fields.map((f) => modelField(f, c)).join(';\n');
 
 			if (c.fields.some((f) => f.type === 'relation')) {
 				const expandableFields = c.fields
@@ -147,10 +174,10 @@ export function collectionsToTypes(collections: Collection[], options: EmitOptio
 						}
 
 						const relationFields = relationCollection.fields
-							.map((f) => `${f.name}: ${fieldToTsType(f.type, f.values, f.maxSelect, false)}`)
+							.map((f) => modelField(f, relationCollection))
 							.join(';\n');
 
-						return `${f.name}: { ${relationFields} }${f.maxSelect !== 1 ? '[]' : ''};`;
+						return `${escapeFieldName(f.name)}: { ${relationFields} }${f.maxSelect !== 1 ? '[]' : ''};`;
 					})
 					.join('\n');
 
@@ -275,10 +302,38 @@ export type JsonSchema = {
 	additionalProperties: false;
 };
 
+/**
+ * Whether a field's `pattern` can go into a JSON Schema as it is. PocketBase
+ * patterns are Go regular expressions and JSON Schema's are ECMAScript ones.
+ * Most are valid as both, but one that is not (`(?i)abc`, `(?P<year>\d+)`)
+ * means something else to whatever reads the schema, so it is left out.
+ *
+ * Compiled without the `u` flag on purpose: with it JavaScript rejects
+ * escapes Go allows and people write, such as `\-` in `^\d{3}\-\d{4}$`.
+ */
+function isPortablePattern(pattern: unknown): pattern is string {
+	if (typeof pattern !== 'string' || pattern === '') return false;
+	try {
+		new RegExp(pattern);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 function fieldToJsonSchema(field: Field): unknown | null {
 	const multi = field.maxSelect !== undefined && field.maxSelect > 1;
 	switch (field.type) {
-		case 'text':
+		case 'text': {
+			// PocketBase stores "no limit" as 0 and "no pattern" as ''. (`max: 0`
+			// really means its default cap of 5000 characters, which is not worth
+			// spelling out for every text field.)
+			const schema: Record<string, unknown> = { type: 'string' };
+			if (typeof field.min === 'number' && field.min > 0) schema.minLength = field.min;
+			if (typeof field.max === 'number' && field.max > 0) schema.maxLength = field.max;
+			if (isPortablePattern(field.pattern)) schema.pattern = field.pattern;
+			return schema;
+		}
 		case 'editor':
 		case 'password':
 			return { type: 'string' };
@@ -289,8 +344,16 @@ function fieldToJsonSchema(field: Field): unknown | null {
 		case 'date':
 		case 'autodate':
 			return { type: 'string', format: 'date-time' };
-		case 'number':
-			return { type: 'number' };
+		case 'number': {
+			// Unlike a text field's, a number's bounds are null when unset, so 0 is
+			// a real bound.
+			const schema: Record<string, unknown> = {
+				type: field.onlyInt === true ? 'integer' : 'number'
+			};
+			if (typeof field.min === 'number') schema.minimum = field.min;
+			if (typeof field.max === 'number') schema.maximum = field.max;
+			return schema;
+		}
 		case 'bool':
 			return { type: 'boolean' };
 		case 'select': {
